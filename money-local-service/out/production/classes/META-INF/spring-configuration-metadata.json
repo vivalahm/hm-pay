@@ -1,0 +1,17 @@
+{
+  "groups": [
+    {
+      "name": "banking",
+      "type": "com.fastcampuspay.moneylocal.MoneyLocalConfigurationProperties",
+      "sourceType": "com.fastcampuspay.moneylocal.MoneyLocalConfigurationProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "banking.transfer-threshold",
+      "type": "java.lang.Long",
+      "sourceType": "com.fastcampuspay.moneylocal.MoneyLocalConfigurationProperties"
+    }
+  ],
+  "hints": []
+}

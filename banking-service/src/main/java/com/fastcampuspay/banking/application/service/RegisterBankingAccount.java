@@ -7,7 +7,7 @@ import com.fastcampuspay.banking.domain.BankingAccountRegisterInfo;
 import com.fastcampuspay.common.UseCase;
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+
 
 @RequiredArgsConstructor
 @UseCase

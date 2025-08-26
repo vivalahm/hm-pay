@@ -5,9 +5,10 @@ import com.fastcampuspay.common.UseCase;
 import com.fastcampuspay.remittance.application.port.in.RemittanceMoneyCommand;
 import com.fastcampuspay.remittance.application.port.in.RemittanceMoneyUseCase;
 import com.fastcampuspay.remittance.application.port.out.RemittanceMoneyPort;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+
 
 @RequiredArgsConstructor
 @UseCase

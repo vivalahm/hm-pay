@@ -6,11 +6,12 @@ import com.fastcampuspay.membership.application.port.in.FindMembershipUseCase;
 import com.fastcampuspay.membership.application.port.out.FindMembershipPort;
 import com.fastcampuspay.membership.application.port.out.query.FindMembershipQuery;
 import com.fastcampuspay.membership.domain.Membership;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.axonframework.messaging.responsetypes.ResponseTypes;
 import org.axonframework.queryhandling.QueryGateway;
 
-import javax.transaction.Transactional;
+
 
 @RequiredArgsConstructor
 @UseCase

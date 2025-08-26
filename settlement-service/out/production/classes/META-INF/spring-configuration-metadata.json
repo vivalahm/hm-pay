@@ -1,0 +1,17 @@
+{
+  "groups": [
+    {
+      "name": "banking",
+      "type": "com.fastcampuspay.settlement.SettlementConfigurationProperties",
+      "sourceType": "com.fastcampuspay.settlement.SettlementConfigurationProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "banking.transfer-threshold",
+      "type": "java.lang.Long",
+      "sourceType": "com.fastcampuspay.settlement.SettlementConfigurationProperties"
+    }
+  ],
+  "hints": []
+}

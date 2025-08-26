@@ -5,10 +5,11 @@ import com.fastcampuspay.membership.application.port.in.RegisterMembershipComman
 import com.fastcampuspay.membership.application.port.in.RegisterMembershipUseCase;
 import com.fastcampuspay.membership.application.port.out.RegisterMembershipPort;
 import com.fastcampuspay.membership.domain.Membership;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 
-import javax.transaction.Transactional;
+
 
 @RequiredArgsConstructor
 @UseCase
