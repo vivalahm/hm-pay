@@ -2,15 +2,15 @@
   "groups": [
     {
       "name": "banking",
-      "type": "com.fastcampuspay.remittance.RemittanceConfigurationProperties",
-      "sourceType": "com.fastcampuspay.remittance.RemittanceConfigurationProperties"
+      "type": "com.hmpay.remittance.RemittanceConfigurationProperties",
+      "sourceType": "com.hmpay.remittance.RemittanceConfigurationProperties"
     }
   ],
   "properties": [
     {
       "name": "banking.transfer-threshold",
       "type": "java.lang.Long",
-      "sourceType": "com.fastcampuspay.remittance.RemittanceConfigurationProperties"
+      "sourceType": "com.hmpay.remittance.RemittanceConfigurationProperties"
     }
   ],
   "hints": []

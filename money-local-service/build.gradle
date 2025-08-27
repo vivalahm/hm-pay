@@ -3,7 +3,7 @@ ext{
     axonVersion = "4.6.0"
 }
 
-group = 'com.fastcampuspay.moneylocal'
+group = 'com.hmpay.moneylocal'
 version = '0.0.1-SNAPSHOT'
 
 dependencies {

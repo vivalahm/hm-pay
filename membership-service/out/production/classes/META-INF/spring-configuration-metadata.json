@@ -2,15 +2,15 @@
   "groups": [
     {
       "name": "membership",
-      "type": "com.fastcampuspay.membership.MembershipConfigurationProperties",
-      "sourceType": "com.fastcampuspay.membership.MembershipConfigurationProperties"
+      "type": "com.hmpay.membership.MembershipConfigurationProperties",
+      "sourceType": "com.hmpay.membership.MembershipConfigurationProperties"
     }
   ],
   "properties": [
     {
       "name": "membership.transfer-threshold",
       "type": "java.lang.Long",
-      "sourceType": "com.fastcampuspay.membership.MembershipConfigurationProperties"
+      "sourceType": "com.hmpay.membership.MembershipConfigurationProperties"
     }
   ],
   "hints": []

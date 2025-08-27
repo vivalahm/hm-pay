@@ -1,4 +1,4 @@
-FROM openjdk:11-slim-stretch
+FROM eclipse-temurin:17-jre
 EXPOSE 8080
 ARG JAR_FILE
 COPY ${JAR_FILE} app.jar

@@ -1,15 +1,33 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
+// 1. 플러그인 버전을 최상위에서 정의하고, 하위 모듈에서는 적용만 하도록 설정
 plugins {
-    id 'org.springframework.boot' version '3.3.2'
-    id 'io.spring.dependency-management' version '1.1.5'
-    id 'java'
-    id 'org.jetbrains.kotlin.jvm' version '1.9.25'
-    id 'org.jetbrains.kotlin.plugin.spring' version '1.9.25'
-    id 'org.jetbrains.kotlin.kapt' version '1.9.25'
+    id 'org.springframework.boot' version '3.3.2' apply false
+    id 'io.spring.dependency-management' version '1.1.5' apply false
+    id 'org.jetbrains.kotlin.jvm' version '2.1.20' apply false
+    id 'org.jetbrains.kotlin.plugin.spring' version '2.1.20' apply false
+    id 'org.jetbrains.kotlin.kapt' version '2.1.20' apply false
+    id 'org.jetbrains.kotlin.plugin.jpa' version '2.1.20' apply false
+    id 'org.jetbrains.kotlin.plugin.noarg' version '2.1.20' apply false
 }
 
+// 2. ext 블록을 사용해 프로젝트 전역에서 사용할 버전들을 변수로 관리
+ext {
+    kotlinVersion = '2.1.20'
+    springdocVersion = '2.6.0'
+    archunitVersion = '1.0.1'
+}
+
+// allprojects: 루트 프로젝트와 모든 서브 프로젝트에 적용
+allprojects {
+    repositories {
+        mavenCentral()
+    }
+}
+
+// subprojects: 모든 서브 프로젝트에만 적용
 subprojects {
+    // 3. 최신 방식인 plugins 블록으로 플러그인을 적용
     apply plugin: 'java'
     apply plugin: 'java-library'
     apply plugin: 'org.springframework.boot'
@@ -17,10 +35,8 @@ subprojects {
     apply plugin: 'org.jetbrains.kotlin.jvm'
     apply plugin: 'org.jetbrains.kotlin.plugin.spring'
     apply plugin: 'org.jetbrains.kotlin.kapt'
-
-    repositories {
-        mavenCentral()
-    }
+    apply plugin: 'org.jetbrains.kotlin.plugin.jpa'
+    apply plugin: 'org.jetbrains.kotlin.plugin.noarg'
 
     java {
         toolchain {
@@ -28,40 +44,35 @@ subprojects {
         }
     }
 
-    tasks.withType(KotlinJvmCompile).configureEach {
+    tasks.withType(KotlinCompile).configureEach {
         kotlinOptions {
             jvmTarget = "17"
             freeCompilerArgs += ["-Xjsr305=strict"]
         }
+        // Ensure Lombok-processed Java classes are compiled before Kotlin, so Kotlin can see generated getters/builders
+        dependsOn tasks.withType(JavaCompile)
     }
 
+    // 4. 모든 서브모듈에 공통으로 필요한 의존성만 남겨둡니다.
     dependencies {
-        implementation 'org.jetbrains.kotlin:kotlin-reflect'
-        implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8'
+        implementation "org.jetbrains.kotlin:kotlin-reflect:${kotlinVersion}" // 버전 변수 사용
+        implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}" // 버전 변수 사용
 
         compileOnly 'org.projectlombok:lombok'
         annotationProcessor 'org.projectlombok:lombok'
         kapt 'org.springframework.boot:spring-boot-configuration-processor'
         annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
 
-        implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
-        testImplementation 'com.tngtech.archunit:archunit:1.0.1'
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+        // 참고: 아래 의존성들은 특정 모듈(예: API 모듈)에만 필요할 수 있습니다.
+        // 그럴 경우, 이 블록에서 제거하고 해당 모듈의 build.gradle 파일로 옮기는 것이 좋습니다.
+        implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+        testImplementation "com.tngtech.archunit:archunit:${archunitVersion}"
     }
+
     test {
         useJUnitPlatform()
         maxHeapSize = "1024m"
     }
-}
-
-bootRun {
-    enabled = false
-}
-
-bootJar {
-    enabled = false
-}
-
-bootBuildImage{
-    enabled = false
 }

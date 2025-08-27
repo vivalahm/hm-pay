@@ -5,7 +5,7 @@ ext{
     axonVersion = "4.6.0"
 }
 
-group = 'com.fastcampuspay.settlement'
+group = 'com.hmpay.settlement'
 version = '0.0.1-SNAPSHOT'
 
 dependencies {
@@ -18,5 +18,5 @@ dependencies {
     implementation 'org.jetbrains:annotations:23.0.0'
     implementation project(path: ':common')
     // runtimeOnly 'com.h2database:h2'
-    runtimeOnly 'mysql:mysql-connector-java'
+    runtimeOnly 'com.mysql:mysql-connector-j'
 }

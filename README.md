@@ -1,6 +1,6 @@
 
 
-# FastCampus-Pay Project Overview
+# hm-Pay Project Overview
 ![Overall Architecture](md_resource/Overall_Architecture_Image.png)
 
 일반적인 간편결제 도메인을 주제로, MSA 를 중점적으로 학습하기 위한 교육용 프로젝트입니다.
@@ -116,7 +116,7 @@
 ![Remittance_Sequence_Example](md_resource/Remittance_Sequence_Example.png)
 
 ## Payment Service (Part. 5)
-가맹점에서 Fastcampus Pay 를 이용한 간편 결제 및 결제 내역 조회 등의 기능을 제공하는 서비스입니다. 
+가맹점에서 hm Pay 를 이용한 간편 결제 및 결제 내역 조회 등의 기능을 제공하는 서비스입니다. 
 - Part 5.
   - Hexagonal Architecture 를 활용하여 Membership 서비스, Money 서비스를 이용하는 가맹점에서의 결제 기능 구현
   - Membership Service 의 가맹점주 기능 확장 
