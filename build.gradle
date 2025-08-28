@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 // 1. 플러그인 버전을 최상위에서 정의하고, 하위 모듈에서는 적용만 하도록 설정
@@ -9,19 +10,44 @@ plugins {
     id 'org.jetbrains.kotlin.kapt' version '2.1.20' apply false
     id 'org.jetbrains.kotlin.plugin.jpa' version '2.1.20' apply false
     id 'org.jetbrains.kotlin.plugin.noarg' version '2.1.20' apply false
+    id 'com.github.ben-manes.versions' version '0.52.0' apply false
 }
 
 // 2. ext 블록을 사용해 프로젝트 전역에서 사용할 버전들을 변수로 관리
 ext {
     kotlinVersion = '2.1.20'
-    springdocVersion = '2.6.0'
-    archunitVersion = '1.0.1'
+    springdocVersion = '2.8.11'
+    archunitVersion = '1.4.1'
 }
 
 // allprojects: 루트 프로젝트와 모든 서브 프로젝트에 적용
 allprojects {
     repositories {
         mavenCentral()
+    }
+    // Apply and configure Gradle Versions Plugin to check dependency stability across all modules
+    apply plugin: 'com.github.ben-manes.versions'
+
+    // Helper to detect non-stable versions
+    ext.isNonStable = { String version ->
+        def stableKeyword = ['RELEASE', 'FINAL', 'GA'].any { kw -> version?.toUpperCase()?.contains(kw) }
+        def regex = /^[0-9,.v-]+(-r)?$/
+        return !stableKeyword && !(version ==~ regex)
+    }
+
+    tasks.named("dependencyUpdates").configure {
+        // Only suggest stable releases unless current is already non-stable
+        rejectVersionIf { sel ->
+            def candidate = sel.candidate.version
+            def current = sel.currentVersion
+            return isNonStable(candidate) && !isNonStable(current)
+        }
+        checkForGradleUpdate = true
+        revision = 'release'
+        outputFormatter = 'plain'
+        // Avoid deprecated project.buildDir; use the Provider-based layout API
+        outputDir = layout.buildDirectory.dir("reports/dependency-updates").get().asFile.absolutePath
+        reportfileName = 'report'
     }
 }
 
@@ -45,9 +71,9 @@ subprojects {
     }
 
     tasks.withType(KotlinCompile).configureEach {
-        kotlinOptions {
-            jvmTarget = "17"
-            freeCompilerArgs += ["-Xjsr305=strict"]
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+            freeCompilerArgs.add("-Xjsr305=strict")
         }
         // Ensure Lombok-processed Java classes are compiled before Kotlin, so Kotlin can see generated getters/builders
         dependsOn tasks.withType(JavaCompile)
@@ -75,4 +101,9 @@ subprojects {
         useJUnitPlatform()
         maxHeapSize = "1024m"
     }
+}
+
+// Aggregator task to run dependencyUpdates across all subprojects from the root
+tasks.register('dependencyUpdatesAll') {
+    dependsOn subprojects.collect { it.tasks.named('dependencyUpdates') }
 }
