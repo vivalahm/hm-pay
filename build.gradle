@@ -1,63 +1,55 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-// 1. 플러그인 버전을 최상위에서 정의하고, 하위 모듈에서는 적용만 하도록 설정
 plugins {
-    id 'org.springframework.boot' version '3.3.2' apply false
+    id 'org.springframework.boot' version '3.4.0' apply false
     id 'io.spring.dependency-management' version '1.1.5' apply false
+
     id 'org.jetbrains.kotlin.jvm' version '2.1.20' apply false
     id 'org.jetbrains.kotlin.plugin.spring' version '2.1.20' apply false
     id 'org.jetbrains.kotlin.kapt' version '2.1.20' apply false
     id 'org.jetbrains.kotlin.plugin.jpa' version '2.1.20' apply false
     id 'org.jetbrains.kotlin.plugin.noarg' version '2.1.20' apply false
+
     id 'com.github.ben-manes.versions' version '0.52.0' apply false
 }
 
-// 2. ext 블록을 사용해 프로젝트 전역에서 사용할 버전들을 변수로 관리
 ext {
-    kotlinVersion = '2.1.20'
-    springdocVersion = '2.8.11'
-    archunitVersion = '1.4.1'
+    kotlinVersion    = '2.1.20'
+    springdocVersion = '2.8.11'   // Boot 3.4.x와 호환
+    archunitVersion  = '1.4.1'
 }
 
-// allprojects: 루트 프로젝트와 모든 서브 프로젝트에 적용
 allprojects {
-    repositories {
-        mavenCentral()
-    }
-    // Apply and configure Gradle Versions Plugin to check dependency stability across all modules
+    repositories { mavenCentral() }
+
     apply plugin: 'com.github.ben-manes.versions'
 
-    // Helper to detect non-stable versions
     ext.isNonStable = { String version ->
-        def stableKeyword = ['RELEASE', 'FINAL', 'GA'].any { kw -> version?.toUpperCase()?.contains(kw) }
+        def stableKeyword = ['RELEASE','FINAL','GA'].any { kw -> version?.toUpperCase()?.contains(kw) }
         def regex = /^[0-9,.v-]+(-r)?$/
         return !stableKeyword && !(version ==~ regex)
     }
 
     tasks.named("dependencyUpdates").configure {
-        // Only suggest stable releases unless current is already non-stable
         rejectVersionIf { sel ->
             def candidate = sel.candidate.version
-            def current = sel.currentVersion
+            def current   = sel.currentVersion
             return isNonStable(candidate) && !isNonStable(current)
         }
         checkForGradleUpdate = true
         revision = 'release'
         outputFormatter = 'plain'
-        // Avoid deprecated project.buildDir; use the Provider-based layout API
-        outputDir = layout.buildDirectory.dir("reports/dependency-updates").get().asFile.absolutePath
+        outputDir = layout.buildDirectory.dir("reports/dependency-updates").get().asFile
         reportfileName = 'report'
     }
 }
 
-// subprojects: 모든 서브 프로젝트에만 적용
 subprojects {
-    // 3. 최신 방식인 plugins 블록으로 플러그인을 적용
-    apply plugin: 'java'
-    apply plugin: 'java-library'
+    // 100% Kotlin 프로젝트 공통 플러그인
     apply plugin: 'org.springframework.boot'
     apply plugin: 'io.spring.dependency-management'
+
     apply plugin: 'org.jetbrains.kotlin.jvm'
     apply plugin: 'org.jetbrains.kotlin.plugin.spring'
     apply plugin: 'org.jetbrains.kotlin.kapt'
@@ -65,45 +57,46 @@ subprojects {
     apply plugin: 'org.jetbrains.kotlin.plugin.noarg'
 
     java {
-        toolchain {
-            languageVersion = JavaLanguageVersion.of(17)
-        }
+        toolchain { languageVersion = JavaLanguageVersion.of(17) }
     }
 
     tasks.withType(KotlinCompile).configureEach {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
-            freeCompilerArgs.add("-Xjsr305=strict")
+            freeCompilerArgs.addAll(
+                    "-Xjsr305=strict",
+                    "-Xjvm-default=all"
+            )
         }
-        // Ensure Lombok-processed Java classes are compiled before Kotlin, so Kotlin can see generated getters/builders
-        dependsOn tasks.withType(JavaCompile)
     }
 
-    // 4. 모든 서브모듈에 공통으로 필요한 의존성만 남겨둡니다.
     dependencies {
-        implementation "org.jetbrains.kotlin:kotlin-reflect:${kotlinVersion}" // 버전 변수 사용
-        implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}" // 버전 변수 사용
+        implementation "org.jetbrains.kotlin:kotlin-reflect:${kotlinVersion}"
+        implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}"
 
-        compileOnly 'org.projectlombok:lombok'
-        annotationProcessor 'org.projectlombok:lombok'
-        kapt 'org.springframework.boot:spring-boot-configuration-processor'
-        annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
+        // Kotlin에서 configuration metadata 생성은 kapt만
+        kapt "org.springframework.boot:spring-boot-configuration-processor"
 
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
+        testImplementation 'io.mockk:mockk:1.13.13'
+        testImplementation 'io.kotest:kotest-runner-junit5:5.9.1'
 
-        // 참고: 아래 의존성들은 특정 모듈(예: API 모듈)에만 필요할 수 있습니다.
-        // 그럴 경우, 이 블록에서 제거하고 해당 모듈의 build.gradle 파일로 옮기는 것이 좋습니다.
+        // 필요 모듈로 이동 가능(지금은 공통 유지)
         implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
         testImplementation "com.tngtech.archunit:archunit:${archunitVersion}"
+    }
+
+    // JPA 엔티티 no-arg 생성자
+    noArg {
+        annotation("jakarta.persistence.Entity")
+        annotation("jakarta.persistence.Embeddable")
+        annotation("jakarta.persistence.MappedSuperclass")
     }
 
     test {
         useJUnitPlatform()
         maxHeapSize = "1024m"
     }
-}
 
-// Aggregator task to run dependencyUpdates across all subprojects from the root
-tasks.register('dependencyUpdatesAll') {
-    dependsOn subprojects.collect { it.tasks.named('dependencyUpdates') }
+    // app/lib 분리 시 각 모듈에서 bootJar/jar enable 제어 권장
 }

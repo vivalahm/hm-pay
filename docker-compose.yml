@@ -1,79 +1,118 @@
-version: '3'
+version: "3.8"
+
+networks:
+  hmpay_network:
+    driver: bridge
+
+volumes:
+  kafka-data:
+  axonserver-data:
+  axonserver-events:
+  axonserver-config:
+  mysql-data:
+
 services:
-  zookeeper:
-    image: 'bitnami/zookeeper:3.8'
-    networks:
-      - hmpay_network
-    ports:
-      - '2181:2181'
-    environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
-      - ZOO_TLS_CLIENT_AUTH=none
-      - ZOO_TLS_QUORUM_CLIENT_AUTH=none
-
+  # === Kafka (KRaft, 공식 Apache 이미지) ===
   kafka:
-    image: 'bitnami/kafka:3.4.0'
-    networks:
-      - hmpay_network
+    image: apache/kafka:3.7.0               # ✅ latest 지양, 호환성 좋은 고정 태그
+    container_name: kafka
+    networks: [hmpay_network]
     ports:
-      - '9092:9092'
+      - "9092:9092"                         # 호스트에서 접속 (외부)
     environment:
-      - KAFKA_BROKER_ID=1
-      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-      - ALLOW_PLAINTEXT_LISTENER=yes
-      - KAFKA_CFG_LISTENERS=LC://kafka:29092,LX://kafka:9092
-      - KAFKA_CFG_ADVERTISED_LISTENERS=LC://kafka:29092,LX://${DOCKER_HOST_IP:-localhost}:9092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=LC:PLAINTEXT,LX:PLAINTEXT
-      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=LC
-    depends_on:
-      - zookeeper
+      # --- KRaft 필수 ---
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_NODE_ID: "1"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
 
+      # --- 리스너(내부/외부/컨트롤러) ---
+      # 컨테이너 내부용: PLAINTEXT (kafka:29092)
+      # 호스트 외부용: EXTERNAL (host.docker.internal:9092 -> 없으면 localhost)
+      KAFKA_LISTENERS: "PLAINTEXT://:29092,EXTERNAL://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,EXTERNAL://host.docker.internal:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      # --- 단일 브로커용 클러스터 ID (초기 1회 생성 후 고정) ---
+      KAFKA_CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+
+      # --- 개발 편의 ---
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+
+      # JVM/시간대
+      TZ: "Asia/Seoul"
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # ✅ 리눅스에서도 동작하도록
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9092'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # === Kafka UI ===
   kafka-ui:
-    image: provectuslabs/kafka-ui
+    image: provectuslabs/kafka-ui:v0.7.2     # ✅ 버전 고정
     container_name: kafka-ui
-    networks:
-      - hmpay_network
+    networks: [hmpay_network]
     ports:
       - "8989:8080"
-    restart: always
     depends_on:
-      - kafka
-      - zookeeper
+      kafka:
+        condition: service_healthy
     environment:
-      - KAFKA_CLUSTERS_0_NAME=local
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:29092
-      - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"  # 컨테이너 내부 브로커 주소
+    restart: unless-stopped
 
+  # === MySQL (LTS 8.4) ===
   mysql:
-    image: mysql:8.4.6
-    networks:
-      - hmpay_network
-    volumes:
-      - ./db/conf.d:/etc/mysql/conf.d
-      - ./db/data:/var/lib/mysql
-      - ./db/initdb.d:/docker-entrypoint-initdb.d
-    env_file: .env
+    image: mysql:8.4
+    container_name: mysql
+    networks: [ hmpay_network ]
     ports:
       - "3306:3306"
     environment:
-      - TZ=Asia/Seoul
-      - MYSQL_ROOT_PASSWORD=rootpassword
-      - MYSQL_USER=mysqluser
-      - MYSQL_PASSWORD=mysqlpw
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"      # 비밀번호 없이 root 계정 허용
+      MYSQL_DATABASE: "hm_pay"
+      MYSQL_USER: "mysqluser"
+      MYSQL_PASSWORD: "mysqlpw"
+      TZ: "Asia/Seoul"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./db/conf.d:/etc/mysql/conf.d
+      - ./db/initdb.d:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-hmysql", "-uroot" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
 
+  # === Axon Server ===
   axon-server:
-    container_name: axon-server
     image: axoniq/axonserver:4.6.3-jdk-17-dev
-    networks:
-      - hmpay_network
+    container_name: axon-server
+    networks: [hmpay_network]
     ports:
       - "8024:8024"
       - "8124:8124"
+    depends_on:
+      mysql:
+        condition: service_healthy
     volumes:
       - axonserver-data:/axonserver/data
       - axonserver-events:/axonserver/events
       - axonserver-config:/axonserver/config:ro
+    restart: unless-stopped
 
+  # === Application Services (Spring Boot / Kotlin 2.1.20) ===
   membership-service:
     image: hm-pay-membership-service:0.0.1-SNAPSHOT
     build:
@@ -81,23 +120,24 @@ services:
       dockerfile: Dockerfile
       args:
         JAR_FILE: membership-service/build/libs/membership-service-0.0.1-SNAPSHOT.jar
-    networks:
-      - hmpay_network
-    ports:
-      - "8081:8080"
+    networks: [hmpay_network]
+    ports: ["8081:8080"]
     depends_on:
-      - axon-server
-      - mysql
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_started
     environment:
-      - AXON_AXONSERVER_SERVERS=axon-server:8124
-      - AXON_SERIALIZER_EVENTS=jackson
-      - AXON_SERIALIZER_MESSAGES=jackson
-      - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      SPRING_PROFILES_ACTIVE: "docker"
+      AXON_AXONSERVER_SERVERS: "axon-server:8124"
+      AXON_SERIALIZER_EVENTS: "jackson"
+      AXON_SERIALIZER_MESSAGES: "jackson"
+      AXON_SERIALIZER_GENERAL: "xstream"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul"
+      SPRING_DATASOURCE_USERNAME: "mysqluser"
+      SPRING_DATASOURCE_PASSWORD: "mysqlpw"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+    restart: on-failure
 
   banking-service:
     image: hm-pay-banking-service:0.0.1-SNAPSHOT
@@ -106,23 +146,24 @@ services:
       dockerfile: Dockerfile
       args:
         JAR_FILE: banking-service/build/libs/banking-service-0.0.1-SNAPSHOT.jar
-    networks:
-      - hmpay_network
-    ports:
-      - "8082:8080"
+    networks: [hmpay_network]
+    ports: ["8082:8080"]
     depends_on:
-      - axon-server
-      - mysql
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_started
     environment:
-      - AXON_AXONSERVER_SERVERS=axon-server:8124
-      - AXON_SERIALIZER_EVENTS=jackson
-      - AXON_SERIALIZER_MESSAGES=jackson
-      - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      SPRING_PROFILES_ACTIVE: "docker"
+      AXON_AXONSERVER_SERVERS: "axon-server:8124"
+      AXON_SERIALIZER_EVENTS: "jackson"
+      AXON_SERIALIZER_MESSAGES: "jackson"
+      AXON_SERIALIZER_GENERAL: "xstream"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul"
+      SPRING_DATASOURCE_USERNAME: "mysqluser"
+      SPRING_DATASOURCE_PASSWORD: "mysqlpw"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+    restart: on-failure
 
   money-service:
     image: hm-pay-money-service:0.0.1-SNAPSHOT
@@ -131,23 +172,24 @@ services:
       dockerfile: Dockerfile
       args:
         JAR_FILE: money-service/build/libs/money-service-0.0.1-SNAPSHOT.jar
-    networks:
-      - hmpay_network
-    ports:
-      - "8083:8080"
+    networks: [hmpay_network]
+    ports: ["8083:8080"]
     depends_on:
-      - axon-server
-      - mysql
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_started
     environment:
-      - AXON_AXONSERVER_SERVERS=axon-server:8124
-      - AXON_SERIALIZER_EVENTS=jackson
-      - AXON_SERIALIZER_MESSAGES=jackson
-      - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      SPRING_PROFILES_ACTIVE: "docker"
+      AXON_AXONSERVER_SERVERS: "axon-server:8124"
+      AXON_SERIALIZER_EVENTS: "jackson"
+      AXON_SERIALIZER_MESSAGES: "jackson"
+      AXON_SERIALIZER_GENERAL: "xstream"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul"
+      SPRING_DATASOURCE_USERNAME: "mysqluser"
+      SPRING_DATASOURCE_PASSWORD: "mysqlpw"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+    restart: on-failure
 
   money-local-service:
     image: hm-pay-money-local-service:0.0.1-SNAPSHOT
@@ -156,23 +198,24 @@ services:
       dockerfile: Dockerfile
       args:
         JAR_FILE: money-local-service/build/libs/money-local-service-0.0.1-SNAPSHOT.jar
-    networks:
-      - hmpay_network
-    ports:
-      - "8084:8080"
+    networks: [hmpay_network]
+    ports: ["8084:8080"]
     depends_on:
-      - axon-server
-      - mysql
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_started
     environment:
-      - AXON_AXONSERVER_SERVERS=axon-server:8124
-      - AXON_SERIALIZER_EVENTS=jackson
-      - AXON_SERIALIZER_MESSAGES=jackson
-      - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      SPRING_PROFILES_ACTIVE: "docker"
+      AXON_AXONSERVER_SERVERS: "axon-server:8124"
+      AXON_SERIALIZER_EVENTS: "jackson"
+      AXON_SERIALIZER_MESSAGES: "jackson"
+      AXON_SERIALIZER_GENERAL: "xstream"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul"
+      SPRING_DATASOURCE_USERNAME: "mysqluser"
+      SPRING_DATASOURCE_PASSWORD: "mysqlpw"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+    restart: on-failure
 
   remittance-service:
     image: hm-pay-remittance-service:0.0.1-SNAPSHOT
@@ -181,23 +224,24 @@ services:
       dockerfile: Dockerfile
       args:
         JAR_FILE: remittance-service/build/libs/remittance-service-0.0.1-SNAPSHOT.jar
-    networks:
-      - hmpay_network
-    ports:
-      - "8085:8080"
+    networks: [hmpay_network]
+    ports: ["8085:8080"]
     depends_on:
-      - axon-server
-      - mysql
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_started
     environment:
-      - AXON_AXONSERVER_SERVERS=axon-server:8124
-      - AXON_SERIALIZER_EVENTS=jackson
-      - AXON_SERIALIZER_MESSAGES=jackson
-      - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      SPRING_PROFILES_ACTIVE: "docker"
+      AXON_AXONSERVER_SERVERS: "axon-server:8124"
+      AXON_SERIALIZER_EVENTS: "jackson"
+      AXON_SERIALIZER_MESSAGES: "jackson"
+      AXON_SERIALIZER_GENERAL: "xstream"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul"
+      SPRING_DATASOURCE_USERNAME: "mysqluser"
+      SPRING_DATASOURCE_PASSWORD: "mysqlpw"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+    restart: on-failure
 
   payment-service:
     image: hm-pay-payment-service:0.0.1-SNAPSHOT
@@ -206,69 +250,21 @@ services:
       dockerfile: Dockerfile
       args:
         JAR_FILE: payment-service/build/libs/payment-service-0.0.1-SNAPSHOT.jar
-    networks:
-      - hmpay_network
-    ports:
-      - "8086:8080"
+    networks: [hmpay_network]
+    ports: ["8086:8080"]
     depends_on:
-      - axon-server
-      - mysql
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_started
     environment:
-      - AXON_AXONSERVER_SERVERS=axon-server:8124
-      - AXON_SERIALIZER_EVENTS=jackson
-      - AXON_SERIALIZER_MESSAGES=jackson
-      - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-
-  settlement-service:
-    image: hm-pay-settlement-service:0.0.1-SNAPSHOT
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        JAR_FILE: settlement-service/build/libs/settlement-service-0.0.1-SNAPSHOT.jar
-    networks:
-      - hmpay_network
-    ports:
-      - "8087:8080"
-    depends_on:
-      - axon-server
-      - mysql
-    environment:
-      - AXON_AXONSERVER_SERVERS=axon-server:8124
-      - AXON_SERIALIZER_EVENTS=jackson
-      - AXON_SERIALIZER_MESSAGES=jackson
-      - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-
-volumes:
-  axonserver-data:
-    driver: local
-    driver_opts:
-      o: bind
-      type: none
-      device: ./axon-server-se/data
-  axonserver-events:
-    driver: local
-    driver_opts:
-      o: bind
-      type: none
-      device: ./axon-server-se/events
-  axonserver-config:
-    driver: local
-    driver_opts:
-      o: bind
-      type: none
-      device: ./axon-server-se/config
-
-networks:
-  hmpay_network:
-    driver: bridge
+      SPRING_PROFILES_ACTIVE: "docker"
+      AXON_AXONSERVER_SERVERS: "axon-server:8124"
+      AXON_SERIALIZER_EVENTS: "jackson"
+      AXON_SERIALIZER_MESSAGES: "jackson"
+      AXON_SERIALIZER_GENERAL: "xstream"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/hm_pay?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul"
+      SPRING_DATASOURCE_USERNAME: "mysqluser"
+      SPRING_DATASOURCE_PASSWORD: "mysqlpw"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+    restart: on-failure

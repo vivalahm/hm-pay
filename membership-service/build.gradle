@@ -1,5 +1,5 @@
 ext{
-    axonVersion = "4.6.0"
+    axonVersion = "4.9.1"
 }
 
 group = 'com.hmpay.membership'
@@ -15,6 +15,6 @@ dependencies {
     implementation project(path: ':common')
     implementation 'org.jetbrains:annotations:23.0.0'
     // runtimeOnly 'com.h2database:h2'
-    runtimeOnly 'com.mysql:mysql-connector-j'
+    implementation 'com.mysql:mysql-connector-j:8.3.0'
 }
 
